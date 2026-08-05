@@ -16,6 +16,23 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// Auth responses are deliberately generic so that they cannot be used to work
+// out which email addresses already have an account on this app. Provider
+// messages such as "User already registered" are never passed through.
+const GENERIC_SIGN_IN_ERROR = 'That email or password is not correct. Please try again.';
+const GENERIC_SIGN_UP_ERROR =
+  "We couldn't create an account with those details. Please check your email address and choose a password of at least 6 characters.";
+
+function genericAuthError(raw: string | undefined, fallback: string): string {
+  if (raw && /rate limit|too many/i.test(raw)) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+  if (raw && /network|fetch|connection/i.test(raw)) {
+    return 'We could not reach the server. Please check your connection and try again.';
+  }
+  return fallback;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -56,12 +73,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+    if (!error) return { error: null };
+    console.error('Sign-in failed:', error.message);
+    return { error: genericAuthError(error.message, GENERIC_SIGN_IN_ERROR) };
   };
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({ email, password });
-    return { error: error?.message ?? null };
+    if (!error) return { error: null };
+    console.error('Sign-up failed:', error.message);
+    return { error: genericAuthError(error.message, GENERIC_SIGN_UP_ERROR) };
   };
 
   const signOut = async () => {

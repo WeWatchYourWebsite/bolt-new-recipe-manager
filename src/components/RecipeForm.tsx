@@ -62,7 +62,10 @@ export default function RecipeForm({ recipe, onSaved, onCancel }: Props) {
 
     setSaving(false);
     if (result.error) {
-      setError(result.error.message);
+      // Never surface the raw backend message: it discloses table, column and
+      // policy detail. Log it for debugging and show a generic sentence.
+      console.error('Failed to save recipe:', result.error.message);
+      setError('We could not save this recipe. Please check your entries and try again.');
     } else {
       onSaved();
     }

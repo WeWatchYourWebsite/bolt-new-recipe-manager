@@ -5,6 +5,8 @@ import { supabase, type Profile } from '@/lib/supabase';
 export default function AdminDashboard() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const [stats, setStats] = useState({ users: 0, recipes: 0, collections: 0 });
 
   useEffect(() => {
@@ -24,10 +26,21 @@ export default function AdminDashboard() {
   }, []);
 
   const toggleAdmin = async (id: string, currentVal: boolean) => {
-    const { error } = await supabase.from('profiles').update({ is_admin: !currentVal }).eq('id', id);
-    if (!error) {
-      setProfiles(profiles.map((p) => (p.id === id ? { ...p, is_admin: !currentVal } : p)));
+    setActionError(null);
+    setPendingId(id);
+    // Role changes go through a privileged database function that re-checks
+    // server-side that the caller is an administrator. Clients cannot write
+    // the is_admin column directly.
+    const { error } = await supabase.rpc('set_user_admin', {
+      target_user: id,
+      make_admin: !currentVal,
+    });
+    setPendingId(null);
+    if (error) {
+      setActionError("That role change could not be applied. You may not have permission, or you can't remove your own administrator role.");
+      return;
     }
+    setProfiles(profiles.map((p) => (p.id === id ? { ...p, is_admin: !currentVal } : p)));
   };
 
   if (loading) {
@@ -42,6 +55,12 @@ export default function AdminDashboard() {
     <div>
       <h2 className="text-2xl font-bold text-stone-900 tracking-tight mb-2">Admin Dashboard</h2>
       <p className="text-sm text-stone-500 mb-8">Manage users and view platform statistics</p>
+
+      {actionError && (
+        <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+          {actionError}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
@@ -111,7 +130,8 @@ export default function AdminDashboard() {
                   <td className="px-5 py-3.5 text-right">
                     <button
                       onClick={() => toggleAdmin(p.id, p.is_admin)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      disabled={pendingId === p.id}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${
                         p.is_admin
                           ? 'text-stone-600 hover:bg-stone-100'
                           : 'text-amber-600 hover:bg-amber-50'
